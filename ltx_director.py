@@ -908,11 +908,19 @@ class LTXDirectorFirstFrame(io.ComfyNode):
                 io.Image.Input(
                     "first_frame_image", optional=True,
                     tooltip=(
-                        "Optional. A standard ComfyUI IMAGE used as the video's first frame. "
-                        "It is injected as a guide keyframe at frame 0 (strength 1.0) and sets the "
-                        "output resolution. A single keyframe anchors the opening ~one LTX latent "
-                        "frame (~0.33s at 24fps, i.e. at least 0.25s)."
+                        "Optional. A standard ComfyUI IMAGE used as the video's first frame. Injected "
+                        "as a guide starting at frame 0 and sets the output resolution. Use "
+                        "first_frame_seconds to control how long it is held and first_frame_strength "
+                        "to control how strongly."
                     ),
+                ),
+                io.Float.Input(
+                    "first_frame_strength", default=1.0, min=0.0, max=1.0, step=0.01, optional=True,
+                    tooltip="Guide strength for the connected first frame. 1.0 locks it fully, lower softens it, 0.0 disables it.",
+                ),
+                io.Float.Input(
+                    "first_frame_seconds", default=0.25, min=0.0, max=60.0, step=0.01, optional=True,
+                    tooltip="How long to hold the connected first frame at the start, in seconds. Quantized to LTX latent frames (~8 pixel frames each); the minimum is one latent frame (~0.33s at 24fps).",
                 ),
                 io.String.Input(
                     "global_prompt", multiline=True, default="", force_input=True, optional=True,
@@ -1028,7 +1036,7 @@ class LTXDirectorFirstFrame(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                first_frame_image=None,
+                first_frame_image=None, first_frame_strength=1.0, first_frame_seconds=0.25,
                 use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False) -> io.NodeOutput:
 
         # Parse timeline data
@@ -1121,16 +1129,22 @@ class LTXDirectorFirstFrame(io.ComfyNode):
                 guide_data["insert_frames"].append(insert_frame)
                 guide_data["strengths"].append(float(strength))
 
-            if first_frame_image is not None and first_frame_image.numel() > 0:
+            if first_frame_image is not None and first_frame_image.numel() > 0 and first_frame_strength > 0.0:
                 first_frame = first_frame_image[0:1].to(torch.float32)
                 if first_frame.shape[-1] > 3:
                     first_frame = first_frame[..., :3]
                 first_frame = _resize_guide_tensor(first_frame, custom_width, custom_height, resize_method, divisible_by)
                 if img_compression > 0:
                     first_frame = _compress_image(first_frame, img_compression)
+
+                hold_latent_frames = max(1, round(first_frame_seconds * float(frame_rate) / 8.0))
+                hold_pixel_frames = (hold_latent_frames - 1) * 8 + 1
+                if hold_pixel_frames > 1:
+                    first_frame = first_frame.repeat(hold_pixel_frames, 1, 1, 1)
+
                 guide_data["images"].insert(0, first_frame)
                 guide_data["insert_frames"].insert(0, 0)
-                guide_data["strengths"].insert(0, 1.0)
+                guide_data["strengths"].insert(0, float(first_frame_strength))
                 derived_h = first_frame.shape[1]
                 derived_w = first_frame.shape[2]
 
