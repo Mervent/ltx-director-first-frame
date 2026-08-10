@@ -1,0 +1,14 @@
+[project]
+name = "ltx-director-first-frame"
+description = "LTX Director timeline node with a native ComfyUI IMAGE first-frame input. Derivative of WhatDreamsCost-ComfyUI (GPL-3.0)."
+version = "0.1.0"
+license = {file = "LICENSE"}
+
+[project.urls]
+Repository = "https://github.com/CHANGE_ME/LTX-Director-FirstFrame"
+"Original Work" = "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI"
+
+[tool.comfy]
+PublisherId = "CHANGE_ME"
+DisplayName = "LTX Director (First Frame Input)"
+includes = []
