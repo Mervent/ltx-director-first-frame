@@ -15,11 +15,13 @@ async def comfy_entrypoint() -> LTXDirectorFirstFrameExtension:
 
 
 NODE_CLASS_MAPPINGS = {
+    "LTXDirectorFirstFrame": LTXDirectorFirstFrame,
     "LTXDirectorFirstFrameGuide": LTXDirectorGuide,
     "LTXDirectorFirstFrameCropGuides": LTXDirectorCropGuides,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "LTXDirectorFirstFrame": "LTX Director (First Frame Input)",
     "LTXDirectorFirstFrameGuide": "LTX Director Guide (First Frame)",
     "LTXDirectorFirstFrameCropGuides": "LTX Director Crop Guides (First Frame)",
 }
