@@ -1,0 +1,4 @@
+torch
+numpy
+Pillow
+av>=12.0

@@ -1,12 +1,13 @@
 [project]
 name = "ltx-director-first-frame"
-description = "LTX Director timeline node with a native ComfyUI IMAGE first-frame input. Derivative of WhatDreamsCost-ComfyUI (GPL-3.0)."
-version = "0.1.0"
+description = "LTX Director and MiniMax H3 Director timeline nodes with native ComfyUI IMAGE first-frame inputs. Derivative of WhatDreamsCost-ComfyUI and ComfyUI-DaSiWa-Nodes (both GPL-3.0)."
+version = "0.2.0"
 license = {file = "LICENSE"}
 
 [project.urls]
 Repository = "https://github.com/CHANGE_ME/LTX-Director-FirstFrame"
 "Original Work" = "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI"
+"MiniMax H3 Director Source" = "https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes"
 
 [tool.comfy]
 PublisherId = "CHANGE_ME"
