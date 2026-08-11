@@ -922,6 +922,27 @@ class LTXDirectorFirstFrame(io.ComfyNode):
                     "first_frame_seconds", default=0.25, min=0.0, max=60.0, step=0.01, optional=True,
                     tooltip="How long to hold the connected first frame at the start, in seconds. Quantized to LTX latent frames (~8 pixel frames each); the minimum is one latent frame (~0.33s at 24fps).",
                 ),
+                io.Image.Input(
+                    "last_frame_image", optional=True,
+                    tooltip=(
+                        "Optional. A standard ComfyUI IMAGE used as the video's last/anchor frame. Injected "
+                        "as a guide so the generation converges to it, which stabilises the end of the clip. "
+                        "Use last_frame_position_seconds to choose where it lands, last_frame_seconds to hold "
+                        "it, and last_frame_strength to control how strongly."
+                    ),
+                ),
+                io.Float.Input(
+                    "last_frame_position_seconds", default=0.0, min=0.0, max=1000.0, step=0.01, optional=True,
+                    tooltip="Where to place the last frame, in seconds from the timeline start. 0 = automatically at the very last frame of the generated video.",
+                ),
+                io.Float.Input(
+                    "last_frame_strength", default=1.0, min=0.0, max=1.0, step=0.01, optional=True,
+                    tooltip="Guide strength for the connected last frame. 1.0 locks it fully, lower softens it, 0.0 disables it.",
+                ),
+                io.Float.Input(
+                    "last_frame_seconds", default=0.25, min=0.0, max=60.0, step=0.01, optional=True,
+                    tooltip="How long to hold the connected last frame (the held block ends exactly on its position). Quantized to LTX latent frames (~8 pixel frames each); the minimum is one latent frame (~0.33s at 24fps).",
+                ),
                 io.String.Input(
                     "global_prompt", multiline=True, default="", force_input=True, optional=True,
                     tooltip="Conditions the entire video. Anchors persistent characters, objects, and scene context.",
@@ -1037,6 +1058,7 @@ class LTXDirectorFirstFrame(io.ComfyNode):
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
                 first_frame_image=None, first_frame_strength=1.0, first_frame_seconds=0.25,
+                last_frame_image=None, last_frame_position_seconds=0.0, last_frame_strength=1.0, last_frame_seconds=0.25,
                 use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False) -> io.NodeOutput:
 
         # Parse timeline data
@@ -1147,6 +1169,44 @@ class LTXDirectorFirstFrame(io.ComfyNode):
                 guide_data["strengths"].insert(0, float(first_frame_strength))
                 derived_h = first_frame.shape[1]
                 derived_w = first_frame.shape[2]
+
+            if last_frame_image is not None and last_frame_image.numel() > 0 and last_frame_strength > 0.0:
+                last_frame = last_frame_image[0:1].to(torch.float32)
+                if last_frame.shape[-1] > 3:
+                    last_frame = last_frame[..., :3]
+                last_frame = _resize_guide_tensor(last_frame, custom_width, custom_height, resize_method, divisible_by)
+                if img_compression > 0:
+                    last_frame = _compress_image(last_frame, img_compression)
+
+                # Total generated pixel-frame length (from the connected latent, else the 8n+1 rule on duration_frames)
+                if optional_latent is not None and isinstance(optional_latent, dict) and "samples" in optional_latent:
+                    total_pixel_frames = (int(optional_latent["samples"].shape[2]) - 1) * 8 + 1
+                else:
+                    total_pixel_frames = int(math.ceil((duration_frames - 1) / 8.0) * 8) + 1
+
+                # Where to drop the anchor: 0 = the very last frame, else an absolute timeline position in seconds
+                if last_frame_position_seconds and last_frame_position_seconds > 0.0:
+                    end_index = int(round(last_frame_position_seconds * float(frame_rate))) - start_frame
+                else:
+                    end_index = total_pixel_frames - 1
+                end_index = max(0, min(total_pixel_frames - 1, end_index))
+
+                # Hold length in LTX-quantized 8n+1 pixel frames, capped so the held block fits before end_index
+                hold_latent_frames = max(1, round(last_frame_seconds * float(frame_rate) / 8.0))
+                hold_latent_frames = min(hold_latent_frames, end_index // 8 + 1)
+                hold_pixel_frames = (hold_latent_frames - 1) * 8 + 1
+                insert_frame = end_index - (hold_pixel_frames - 1)
+                if hold_pixel_frames > 1:
+                    last_frame = last_frame.repeat(hold_pixel_frames, 1, 1, 1)
+
+                # No prior guide (no first frame / no timeline images) → the last frame defines output resolution
+                if not guide_data["images"]:
+                    derived_h = last_frame.shape[1]
+                    derived_w = last_frame.shape[2]
+
+                guide_data["images"].append(last_frame)
+                guide_data["insert_frames"].append(int(insert_frame))
+                guide_data["strengths"].append(float(last_frame_strength))
 
             # If no images were loaded from the timeline, create a dummy image at strength 0
             # to prevent artifacts in text-to-video mode.
