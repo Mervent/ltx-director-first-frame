@@ -43,7 +43,7 @@ class MiniMaxH3DirectorFirstFrame:
             },
         }
 
-    RETURN_TYPES = ("MINIMAX_H3_DIRECTOR_FF_GUIDE", "INT", "STRING", "INT", "INT", "MODEL", "BOOLEAN", "BOOLEAN")
+    RETURN_TYPES = ("MINIMAX_H3_DIRECTOR_GUIDE", "INT", "STRING", "INT", "INT", "MODEL", "BOOLEAN", "BOOLEAN")
     RETURN_NAMES = ("guide", "duration", "positive_prompt", "width", "height", "model", "fl2va_requested", "ref2va_requested")
     FUNCTION = "build_guide"
     CATEGORY = "DaSiWa Nodes/MiniMax H3"

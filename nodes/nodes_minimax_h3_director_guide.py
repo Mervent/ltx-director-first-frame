@@ -40,7 +40,7 @@ class MiniMaxH3DirectorFirstFrameGuide:
             "required": {
                 "clip": ("CLIP",),
                 "vae": ("VAE",),
-                "guide": ("MINIMAX_H3_DIRECTOR_FF_GUIDE",),
+                "guide": ("MINIMAX_H3_DIRECTOR_GUIDE",),
             },
             "optional": {"audio_vae": ("VAE",)},
         }
