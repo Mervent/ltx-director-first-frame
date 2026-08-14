@@ -40,6 +40,11 @@ class MiniMaxH3DirectorFirstFrame:
                 "ref2va_model": ("MODEL", {"lazy": True}),
                 "first_frame_image": ("IMAGE", {"tooltip": "Optional ComfyUI IMAGE wired straight in as the video's first frame, bypassing the timeline editor. Overrides any timeline first-frame slot. Used only in the image modes (T2VA is auto-promoted to I2VA/FL2VA); ignored in REF2VA."}),
                 "last_frame_image": ("IMAGE", {"tooltip": "Optional ComfyUI IMAGE wired straight in as the video's last frame, bypassing the timeline editor. Overrides any timeline last-frame slot. Used only in the image modes; ignored in REF2VA."}),
+                "ref2va_images": ("IMAGE", {"tooltip": "REF2VA only. A ComfyUI IMAGE batch used as reference images (up to 9, split along the batch dim). Appended to any timeline refs before validation."}),
+                "ref2va_videos": ("IMAGE", {"tooltip": "REF2VA only. A ComfyUI IMAGE frame batch used as one reference video (frame count / 24 = its duration; must be 2-15s). Appended to any timeline refs before validation."}),
+                "ref2va_audios": ("AUDIO", {"tooltip": "REF2VA only. A ComfyUI AUDIO used as one reference audio (must be 2-15s). Appended to any timeline refs before validation."}),
+                "integrated_multimodal_description": ("STRING", {"forceInput": True, "tooltip": "Optional external string. When connected with text, it overrides the integrated_multimodal_description written in the node's prompt builder."}),
+                "overall_soundscape": ("STRING", {"forceInput": True, "tooltip": "Optional external string. When connected with text, it overrides the overall_soundscape written in the node's prompt builder (base modes and REF2VA)."}),
             },
         }
 
@@ -49,13 +54,17 @@ class MiniMaxH3DirectorFirstFrame:
     CATEGORY = "DaSiWa Nodes/MiniMax H3"
 
     def check_lazy_status(self, mode, prompt, width, height, duration, ref_image_size, timeline_data, builder_state,
-                          fl2va_model=None, ref2va_model=None, first_frame_image=None, last_frame_image=None):
+                          fl2va_model=None, ref2va_model=None, first_frame_image=None, last_frame_image=None,
+                          ref2va_images=None, ref2va_videos=None, ref2va_audios=None,
+                          integrated_multimodal_description=None, overall_soundscape=None):
         selected_name = "ref2va_model" if mode == "REF2VA" else "fl2va_model"
         selected_model = ref2va_model if mode == "REF2VA" else fl2va_model
         return [selected_name] if selected_model is None else []
 
     def build_guide(self, mode, prompt, width, height, duration, ref_image_size, timeline_data, builder_state="",
-                    fl2va_model=None, ref2va_model=None, first_frame_image=None, last_frame_image=None):
+                    fl2va_model=None, ref2va_model=None, first_frame_image=None, last_frame_image=None,
+                    ref2va_images=None, ref2va_videos=None, ref2va_audios=None,
+                    integrated_multimodal_description=None, overall_soundscape=None):
         # Preserve direct Python callers that used the pre-builder positional model argument.
         if builder_state is not None and not isinstance(builder_state, str):
             if fl2va_model is None:
@@ -156,6 +165,16 @@ class MiniMaxH3DirectorFirstFrame:
                         else:
                             ref_audios[f"ref_audio_{len(ref_audios) + 1}"] = attached_audio
                         audios.append({**item, "duration": audio_duration(attached_audio) if isinstance(attached_audio, dict) else item.get("duration")})
+            if ref2va_images is not None and ref2va_images.numel() > 0:
+                for i in range(ref2va_images.shape[0]):
+                    ref_images[f"ref_image_{len(ref_images) + 1}"] = ref2va_images[i:i + 1].float()
+                    images.append({"type": "image"})
+            if ref2va_videos is not None and ref2va_videos.numel() > 0:
+                ref_videos[f"ref_video_{len(ref_videos) + 1}"] = ref2va_videos.float()
+                videos.append({"type": "video", "duration": float(ref2va_videos.shape[0]) / 24.0})
+            if ref2va_audios is not None:
+                ref_audios[f"ref_audio_{len(ref_audios) + 1}"] = ref2va_audios
+                audios.append({"type": "audio", "duration": audio_duration(ref2va_audios)})
             validate_reference_limits(images=images, videos=videos, audios=audios)
 
         # A wired IMAGE socket overrides the timeline slot. H3's native node has no strength
@@ -179,6 +198,12 @@ class MiniMaxH3DirectorFirstFrame:
                 log_dasiwa("MiniMax H3 Director", f"first/last-frame IMAGE wired in T2VA; promoting mode to {mode}")
         elif first_frame_image is not None or last_frame_image is not None:
             log_dasiwa("MiniMax H3 Director", f"first/last-frame IMAGE sockets are ignored in {mode} mode")
+
+        if integrated_multimodal_description and integrated_multimodal_description.strip():
+            merged["imd"] = integrated_multimodal_description
+        if overall_soundscape and overall_soundscape.strip():
+            merged["soundscape"] = overall_soundscape
+            merged["ref"]["soundscape"] = overall_soundscape
 
         blocks = state.get("prompt_blocks", [])
         resolved = build_prompt(merged)
