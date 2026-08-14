@@ -8,6 +8,7 @@ Since the last GitHub release (August 2026):
 
 ### New features
 
+- **External text sockets for every prompt-builder field:** the Director now exposes `forceInput` STRING inputs for all six REF2VA fields (`subject_definitions`, `summary`, `retention_analysis`, `detailed_description`, `overall_soundscape`, `non_diegetic_music`) plus the base-mode `integrated_multimodal_description`. Wire text from another node (e.g. an LLM) to override the corresponding UI field; empty/unconnected sockets keep the typed value. The four structural REF2VA sockets are ignored in base modes.
 - **REF2VA prompt builder redesigned:** simplified to six free-text fields (subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music). Headers are added automatically when the prompt is sent upstream. Legacy v1 structured-builder data is merged backward-compatibly into these fields.
 - **Insert [Shot N] button:** opens a small dialog asking for a shot number, then inserts `[Shot N] ` at the current cursor position in the appropriate text area — no more manual typing.
 - **Prefill Labels & Summary button (REF2VA):** scans your inserted media and generates `<Picture N>`, `<Video N>`, and `<Audio N>` label lines plus a task-prefixed summary line so you can focus on editing instead of boilerplate.
@@ -281,6 +282,9 @@ Understanding the data path makes wiring and debugging easier.
 
 - **width / height / duration** widgets: define output resolution and length.
 - **Optional model sockets** (`fl2va_model`, `ref2va_model`): connect only the model matching your current mode; the Guide uses them lazily.
+- **Optional text sockets** (`forceInput` STRING): wire an external string (e.g. an LLM node) into any prompt-builder field to override what you typed in the UI. Each only takes effect when it carries non-empty text; leave it unconnected to keep the builder value.
+  - Base modes and REF2VA: `integrated_multimodal_description`, `overall_soundscape`, `non_diegetic_music`.
+  - REF2VA only: `subject_definitions`, `summary`, `retention_analysis`, `detailed_description` (ignored, with a log line, in base modes).
 - All media is managed inside the node UI (upload/paste/drop), but paths ultimately live in ComfyUI's `input/` folder.
 
 ### Inside the Director

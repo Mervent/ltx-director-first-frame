@@ -45,6 +45,11 @@ class MiniMaxH3DirectorFirstFrame:
                 "ref2va_audios": ("AUDIO", {"tooltip": "REF2VA only. A ComfyUI AUDIO used as one reference audio (must be 2-15s). Appended to any timeline refs before validation."}),
                 "integrated_multimodal_description": ("STRING", {"forceInput": True, "tooltip": "Optional external string. When connected with text, it overrides the integrated_multimodal_description written in the node's prompt builder."}),
                 "overall_soundscape": ("STRING", {"forceInput": True, "tooltip": "Optional external string. When connected with text, it overrides the overall_soundscape written in the node's prompt builder (base modes and REF2VA)."}),
+                "subject_definitions": ("STRING", {"forceInput": True, "tooltip": "REF2VA only. Optional external string. When connected with text, it overrides the subject_definitions written in the node's prompt builder. Ignored in base modes."}),
+                "summary": ("STRING", {"forceInput": True, "tooltip": "REF2VA only. Optional external string. When connected with text, it overrides the summary written in the node's prompt builder. Ignored in base modes."}),
+                "retention_analysis": ("STRING", {"forceInput": True, "tooltip": "REF2VA only. Optional external string. When connected with text, it overrides the retention_analysis written in the node's prompt builder. Ignored in base modes."}),
+                "detailed_description": ("STRING", {"forceInput": True, "tooltip": "REF2VA only. Optional external string. When connected with text, it overrides the detailed_description written in the node's prompt builder. Ignored in base modes."}),
+                "non_diegetic_music": ("STRING", {"forceInput": True, "tooltip": "Optional external string. When connected with text, it overrides the non_diegetic_music written in the node's prompt builder (base modes and REF2VA)."}),
             },
         }
 
@@ -56,7 +61,9 @@ class MiniMaxH3DirectorFirstFrame:
     def check_lazy_status(self, mode, prompt, width, height, duration, ref_image_size, timeline_data, builder_state,
                           fl2va_model=None, ref2va_model=None, first_frame_image=None, last_frame_image=None,
                           ref2va_images=None, ref2va_videos=None, ref2va_audios=None,
-                          integrated_multimodal_description=None, overall_soundscape=None):
+                          integrated_multimodal_description=None, overall_soundscape=None,
+                          subject_definitions=None, summary=None, retention_analysis=None,
+                          detailed_description=None, non_diegetic_music=None):
         selected_name = "ref2va_model" if mode == "REF2VA" else "fl2va_model"
         selected_model = ref2va_model if mode == "REF2VA" else fl2va_model
         return [selected_name] if selected_model is None else []
@@ -64,7 +71,9 @@ class MiniMaxH3DirectorFirstFrame:
     def build_guide(self, mode, prompt, width, height, duration, ref_image_size, timeline_data, builder_state="",
                     fl2va_model=None, ref2va_model=None, first_frame_image=None, last_frame_image=None,
                     ref2va_images=None, ref2va_videos=None, ref2va_audios=None,
-                    integrated_multimodal_description=None, overall_soundscape=None):
+                    integrated_multimodal_description=None, overall_soundscape=None,
+                    subject_definitions=None, summary=None, retention_analysis=None,
+                    detailed_description=None, non_diegetic_music=None):
         # Preserve direct Python callers that used the pre-builder positional model argument.
         if builder_state is not None and not isinstance(builder_state, str):
             if fl2va_model is None:
@@ -90,6 +99,22 @@ class MiniMaxH3DirectorFirstFrame:
         merged = default_builder_state(mode)
         merged.update(builder)
         merged["ref"] = {**default_builder_state(mode)["ref"], **(builder.get("ref") or {})}
+        # Override before normalize_ref_schema so its derived v1 keys (read by prompt_payload) match
+        # the resolved prompt; pop the paired v1 key so normalize re-derives it from the override.
+        if mode == "REF2VA":
+            ref_overrides = [
+                (subject_definitions, "subject_definitions", ("subject_defs",)),
+                (summary, "summary", ("summary_text",)),
+                (retention_analysis, "retention_analysis", ("retention",)),
+                (detailed_description, "detailed_description", ("style_line", "detail")),
+            ]
+            for value, v2_key, v1_keys in ref_overrides:
+                if value and value.strip():
+                    merged["ref"][v2_key] = value
+                    for v1_key in v1_keys:
+                        merged["ref"].pop(v1_key, None)
+        elif any(value and value.strip() for value in (subject_definitions, summary, retention_analysis, detailed_description)):
+            log_dasiwa("MiniMax H3 Director", f"subject_definitions/summary/retention_analysis/detailed_description sockets are ignored in {mode} mode")
         normalize_ref_schema(merged["ref"])
         merged["mode"] = mode
         merged["duration"] = duration
@@ -204,10 +229,15 @@ class MiniMaxH3DirectorFirstFrame:
         if overall_soundscape and overall_soundscape.strip():
             merged["soundscape"] = overall_soundscape
             merged["ref"]["soundscape"] = overall_soundscape
+        music_override = bool(non_diegetic_music and non_diegetic_music.strip())
+        if music_override:
+            merged["music"] = non_diegetic_music
+            merged["ref"]["music"] = non_diegetic_music
 
         blocks = state.get("prompt_blocks", [])
         resolved = build_prompt(merged)
-        if not any(str(merged.get(key) or "").strip() for key in ("imd", "soundscape")) and mode != "REF2VA":
+        builder_has_content = music_override or any(str(merged.get(key) or "").strip() for key in ("imd", "soundscape"))
+        if not builder_has_content and mode != "REF2VA":
             resolved = assemble_prompt(prompt, blocks)
         for issue in validate_builder_state(merged):
             log_dasiwa("MiniMax H3 Director", f"[{issue['level'].upper()}] {issue['msg']}")
