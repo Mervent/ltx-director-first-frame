@@ -40,9 +40,10 @@ class MiniMaxH3DirectorFirstFrame:
                 "ref2va_model": ("MODEL", {"lazy": True}),
                 "first_frame_image": ("IMAGE", {"tooltip": "Optional ComfyUI IMAGE wired straight in as the video's first frame, bypassing the timeline editor. Overrides any timeline first-frame slot. Used only in the image modes (T2VA is auto-promoted to I2VA/FL2VA); ignored in REF2VA."}),
                 "last_frame_image": ("IMAGE", {"tooltip": "Optional ComfyUI IMAGE wired straight in as the video's last frame, bypassing the timeline editor. Overrides any timeline last-frame slot. Used only in the image modes; ignored in REF2VA."}),
-                "ref2va_images": ("IMAGE", {"tooltip": "REF2VA only. A ComfyUI IMAGE batch used as reference images (up to 9, split along the batch dim). Appended to any timeline refs before validation."}),
+                **{f"ref2va_image_{i}": ("IMAGE", {"tooltip": f"REF2VA only. One reference image ({i} of 9), wired at its own resolution/aspect ratio (unlike a shared IMAGE batch). Becomes the next <Picture N> in timeline order; a batch here is still split per frame. Appended to any timeline refs before validation."}) for i in range(1, 10)},
                 "ref2va_videos": ("IMAGE", {"tooltip": "REF2VA only. A ComfyUI IMAGE frame batch used as one reference video (frame count / 24 = its duration; must be 2-15s). Appended to any timeline refs before validation."}),
-                "ref2va_audios": ("AUDIO", {"tooltip": "REF2VA only. A ComfyUI AUDIO used as one reference audio (must be 2-15s). Appended to any timeline refs before validation."}),
+                "ref2va_audios": ("AUDIO", {"tooltip": "REF2VA only. A ComfyUI AUDIO used as one standalone reference audio (its own <Audio N>, must be 2-15s). Appended to any timeline refs before validation."}),
+                "ref2va_video_audio": ("AUDIO", {"tooltip": "REF2VA only. A ComfyUI AUDIO paired with ref2va_videos as that video's soundtrack (lands in ref_video_audios, i.e. the <Audio N> that belongs to <Video N>), not as a standalone audio. Ignored if ref2va_videos is not connected. Must be 2-15s."}),
                 "integrated_multimodal_description": ("STRING", {"forceInput": True, "tooltip": "Optional external string. When connected with text, it overrides the integrated_multimodal_description written in the node's prompt builder."}),
                 "overall_soundscape": ("STRING", {"forceInput": True, "tooltip": "Optional external string. When connected with text, it overrides the overall_soundscape written in the node's prompt builder (base modes and REF2VA)."}),
                 "subject_definitions": ("STRING", {"forceInput": True, "tooltip": "REF2VA only. Optional external string. When connected with text, it overrides the subject_definitions written in the node's prompt builder. Ignored in base modes."}),
@@ -60,7 +61,9 @@ class MiniMaxH3DirectorFirstFrame:
 
     def check_lazy_status(self, mode, prompt, width, height, duration, ref_image_size, timeline_data, builder_state,
                           fl2va_model=None, ref2va_model=None, first_frame_image=None, last_frame_image=None,
-                          ref2va_images=None, ref2va_videos=None, ref2va_audios=None,
+                          ref2va_image_1=None, ref2va_image_2=None, ref2va_image_3=None, ref2va_image_4=None,
+                          ref2va_image_5=None, ref2va_image_6=None, ref2va_image_7=None, ref2va_image_8=None,
+                          ref2va_image_9=None, ref2va_videos=None, ref2va_audios=None, ref2va_video_audio=None,
                           integrated_multimodal_description=None, overall_soundscape=None,
                           subject_definitions=None, summary=None, retention_analysis=None,
                           detailed_description=None, non_diegetic_music=None):
@@ -70,7 +73,9 @@ class MiniMaxH3DirectorFirstFrame:
 
     def build_guide(self, mode, prompt, width, height, duration, ref_image_size, timeline_data, builder_state="",
                     fl2va_model=None, ref2va_model=None, first_frame_image=None, last_frame_image=None,
-                    ref2va_images=None, ref2va_videos=None, ref2va_audios=None,
+                    ref2va_image_1=None, ref2va_image_2=None, ref2va_image_3=None, ref2va_image_4=None,
+                    ref2va_image_5=None, ref2va_image_6=None, ref2va_image_7=None, ref2va_image_8=None,
+                    ref2va_image_9=None, ref2va_videos=None, ref2va_audios=None, ref2va_video_audio=None,
                     integrated_multimodal_description=None, overall_soundscape=None,
                     subject_definitions=None, summary=None, retention_analysis=None,
                     detailed_description=None, non_diegetic_music=None):
@@ -190,13 +195,22 @@ class MiniMaxH3DirectorFirstFrame:
                         else:
                             ref_audios[f"ref_audio_{len(ref_audios) + 1}"] = attached_audio
                         audios.append({**item, "duration": audio_duration(attached_audio) if isinstance(attached_audio, dict) else item.get("duration")})
-            if ref2va_images is not None and ref2va_images.numel() > 0:
-                for i in range(ref2va_images.shape[0]):
-                    ref_images[f"ref_image_{len(ref_images) + 1}"] = ref2va_images[i:i + 1].float()
+            socket_images = (ref2va_image_1, ref2va_image_2, ref2va_image_3, ref2va_image_4, ref2va_image_5,
+                             ref2va_image_6, ref2va_image_7, ref2va_image_8, ref2va_image_9)
+            for socket_image in socket_images:
+                if socket_image is None or socket_image.numel() == 0:
+                    continue
+                for i in range(socket_image.shape[0]):
+                    ref_images[f"ref_image_{len(ref_images) + 1}"] = socket_image[i:i + 1].float()
                     images.append({"type": "image"})
             if ref2va_videos is not None and ref2va_videos.numel() > 0:
                 ref_videos[f"ref_video_{len(ref_videos) + 1}"] = ref2va_videos.float()
                 videos.append({"type": "video", "duration": float(ref2va_videos.shape[0]) / 24.0})
+                if ref2va_video_audio is not None:
+                    ref_video_audios[f"ref_video_audio_{len(ref_videos)}"] = ref2va_video_audio
+                    audios.append({"type": "audio", "duration": audio_duration(ref2va_video_audio)})
+            elif ref2va_video_audio is not None:
+                log_dasiwa("MiniMax H3 Director", "ref2va_video_audio ignored: connect ref2va_videos to pair the soundtrack")
             if ref2va_audios is not None:
                 ref_audios[f"ref_audio_{len(ref_audios) + 1}"] = ref2va_audios
                 audios.append({"type": "audio", "duration": audio_duration(ref2va_audios)})
