@@ -12,6 +12,9 @@ const VISUAL_MARKERS_JS = ["fully_preserved","partially_preserved","attribute_tr
 const AUDIO_MARKERS_JS = ["fully_copy","partially_copy","reference","weak_reference"];
 const ALL_MARKERS_JS = [...new Set([...VISUAL_MARKERS_JS,...AUDIO_MARKERS_JS])];
 const DEFAULT_STATE = { version: 1, items: [], prompt_blocks: [], builder_state: null };
+// Stripped from the backend widget value: these mutate on their own (thumbnails generated
+// async after load, panel heights on resize) and would bust ComfyUI's node cache key.
+const H3_BACKEND_IRRELEVANT_KEYS = new Set(["thumbnail", "media_prompt_height", "global_prompt_height"]);
 const MAX = { image: 9, video: 3, audio: 3, total: 12 };
 const REPOSITORY_URL = "https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/blob/main/docs/minimax_h3_director.md";
 const IMAGE_EXTENSIONS = new Set(["avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "jxl", "png", "tif", "tiff", "webp"]);
@@ -129,7 +132,18 @@ function install(node) {
   const status = document.createElement("div"); status.className = "ds-h3-status ds-h3-info-field"; status.textContent = ""; status.style.display = "none";
   const timeline = document.createElement("div"); timeline.className = "ds-h3 ds-h3-root"; timeline.tabIndex = 0;
   const setStatus = (message, isError = false) => { status.textContent = message; status.classList.toggle("error", isError); };
-  const emit = () => { builderState.mode = mode(); state.builder_state = builderState; dataWidget.value = JSON.stringify(state); dataWidget.callback?.(dataWidget.value); if (builderWidget) { builderWidget.value = JSON.stringify(builderState); builderWidget.callback?.(builderWidget.value); } node.graph?.setDirtyCanvas(true, true); };
+  const backendJSON = value => JSON.stringify(value, (key, val) => (H3_BACKEND_IRRELEVANT_KEYS.has(key) ? undefined : val));
+  const emit = () => {
+    builderState.mode = mode();
+    state.builder_state = builderState;
+    const nextData = backendJSON(state);
+    if (nextData !== dataWidget.value) { dataWidget.value = nextData; dataWidget.callback?.(nextData); }
+    if (builderWidget) {
+      const nextBuilder = backendJSON(builderState);
+      if (nextBuilder !== builderWidget.value) { builderWidget.value = nextBuilder; builderWidget.callback?.(nextBuilder); }
+    }
+    node.graph?.setDirtyCanvas(true, true);
+  };
   const allowNativeTextEditing = element => { ["pointerdown","mousedown","keydown","keypress","keyup","copy","cut","paste"].forEach(type => element.addEventListener(type, event => event.stopPropagation())); };
 
   function buildBaseForm(panel) {
