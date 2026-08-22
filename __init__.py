@@ -2,6 +2,7 @@ from .ltx_director import LTXDirectorFirstFrame
 from .ltx_director_guide import LTXDirectorGuide, LTXDirectorCropGuides
 from .nodes.nodes_minimax_h3_director import MiniMaxH3DirectorFirstFrame
 from .nodes.nodes_minimax_h3_director_guide import MiniMaxH3DirectorFirstFrameGuide
+from .nodes.nodes_seed_freeze_gate import SeedFreezeGate
 from comfy_api.latest import ComfyExtension, io
 from typing_extensions import override
 
@@ -22,6 +23,7 @@ NODE_CLASS_MAPPINGS = {
     "LTXDirectorFirstFrameCropGuides": LTXDirectorCropGuides,
     "MiniMaxH3DirectorFirstFrame": MiniMaxH3DirectorFirstFrame,
     "MiniMaxH3DirectorFirstFrameGuide": MiniMaxH3DirectorFirstFrameGuide,
+    "SeedFreezeGate": SeedFreezeGate,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -30,6 +32,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LTXDirectorFirstFrameCropGuides": "LTX Director Crop Guides (First Frame)",
     "MiniMaxH3DirectorFirstFrame": "MiniMax H3 Director (First Frame Input)",
     "MiniMaxH3DirectorFirstFrameGuide": "MiniMax H3 Director Guide (First Frame)",
+    "SeedFreezeGate": "Seed Freeze Gate",
 }
 
 WEB_DIRECTORY = "./js"
