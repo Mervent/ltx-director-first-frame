@@ -35,43 +35,46 @@ class SeedFreezeGate:
             "optional": {
                 "images": ("IMAGE", {"lazy": True, "tooltip": "Expensive image batch to freeze (e.g. sampler + VAE decode output)."}),
                 "audio": ("AUDIO", {"lazy": True, "tooltip": "Audio produced by the same upstream branch. Route it through this gate too, or its consumer will pull the sampler anyway."}),
+                "text": ("STRING", {"forceInput": True, "lazy": True, "tooltip": "Text produced by the same upstream branch (e.g. a caption/prompt). Route it through this gate too, or its consumer will pull the sampler anyway."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID", "prompt": "PROMPT"},
         }
 
-    RETURN_TYPES = ("IMAGE", "AUDIO")
-    RETURN_NAMES = ("images", "audio")
+    RETURN_TYPES = ("IMAGE", "AUDIO", "STRING")
+    RETURN_NAMES = ("images", "audio", "text")
     FUNCTION = "gate"
     CATEGORY = "DaSiWa Nodes/Utils"
 
     # Returning [] tells ComfyUI the lazy inputs are not needed, so the whole
     # upstream branch (sampler/VAE) is never staged for execution. This works
     # independently of the output cache, surviving RAM-pressure eviction.
-    def check_lazy_status(self, key, enabled, store_uint8, images=None, audio=None, unique_id=None, prompt=None):
+    def check_lazy_status(self, key, enabled, store_uint8, images=None, audio=None, text=None, unique_id=None, prompt=None):
         entry = _LAST_RUN.get(unique_id)
         if enabled and entry is not None and entry[0] == key:
             return []
         connected = _connected_inputs(prompt, unique_id)
-        return [name for name, value in (("images", images), ("audio", audio)) if value is None and name in connected]
+        return [name for name, value in (("images", images), ("audio", audio), ("text", text)) if value is None and name in connected]
 
-    def gate(self, key, enabled, store_uint8, images=None, audio=None, unique_id=None, prompt=None):
+    def gate(self, key, enabled, store_uint8, images=None, audio=None, text=None, unique_id=None, prompt=None):
         entry = _LAST_RUN.get(unique_id)
-        if images is None and audio is None:
+        if images is None and audio is None and text is None:
             if entry is None:
-                raise ValueError("SeedFreezeGate has nothing frozen yet: wire images (and audio) into it and run once")
+                raise ValueError("SeedFreezeGate has nothing frozen yet: wire images, audio or text into it and run once")
             log_dasiwa("Seed Freeze Gate", f"key={key} unchanged; serving frozen batch, upstream skipped")
-            return _unpack_images(entry[1]), entry[2]
+            return _unpack_images(entry[1]), entry[2], entry[3]
         if not enabled:
-            return images, audio
+            return images, audio, text
         same_key = entry is not None and entry[0] == key
         stored_images = _pack_images(images, store_uint8) if images is not None else (entry[1] if same_key else None)
         stored_audio = audio if audio is not None else (entry[2] if same_key else None)
-        _LAST_RUN[unique_id] = (key, stored_images, stored_audio)
+        stored_text = text if text is not None else (entry[3] if same_key else None)
+        _LAST_RUN[unique_id] = (key, stored_images, stored_audio, stored_text)
         size_mb = stored_images.numel() * stored_images.element_size() / 1e6 if stored_images is not None else 0.0
         log_dasiwa("Seed Freeze Gate", f"froze batch for key={key} ({size_mb:.0f} MB held in RAM)")
         return (
             images if images is not None else _unpack_images(stored_images),
             audio if audio is not None else stored_audio,
+            text if text is not None else stored_text,
         )
 
 
